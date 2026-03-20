@@ -744,7 +744,7 @@
 const GITHUB_CSV_URL = '';
 // Set to: 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/goodreads_library_export.csv'
 
-const GITHUB_COVERS_URL = 'https://raw.githubusercontent.com/zapanda/my-bookshelf/refs/heads/main/covers.json';
+const GITHUB_COVERS_URL = '';
 // Set to: 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/covers.json'
 // Run enrich-covers.js locally first, commit covers.json, then set this URL.
 
@@ -760,11 +760,26 @@ const SHELF_MAP = {
 };
 
 // ═══ INIT ═══
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   setupDrop();
-  if (GITHUB_COVERS_URL) loadCoversMap();
+
+  // Load covers.json FIRST — before rendering anything — so covers are
+  // available immediately when books are displayed.
+  if (GITHUB_COVERS_URL) await loadCoversMap();
+
   const saved = localStorage.getItem('myshelf_v2');
-  if (saved) { try { allBooks = JSON.parse(saved); showLibrary(); } catch(e){} }
+  if (saved) {
+    try {
+      allBooks = JSON.parse(saved);
+      // Strip stale null covers so lazyCovers() will retry them with the
+      // fresh coversMap. A null means "tried before and failed" but that
+      // was before covers.json existed.
+      allBooks.forEach(b => { if (b.cover === null) b.cover = undefined; });
+      // Apply coversMap immediately to all books before first render
+      applyCoversFromMap();
+      showLibrary();
+    } catch(e) {}
+  }
   if (!allBooks.length && GITHUB_CSV_URL) fetchGH();
 });
 
@@ -773,13 +788,20 @@ async function loadCoversMap() {
     const res = await fetch(GITHUB_COVERS_URL + '?t=' + Date.now());
     if (!res.ok) return;
     coversMap = await res.json();
-    // If books are already displayed, apply covers immediately
-    if (allBooks.length) {
-      let changed = false;
-      allBooks.forEach(b => { if (!b.cover && b.id && coversMap[b.id]) { b.cover = coversMap[b.id]; changed = true; } });
-      if (changed) { save(); applyFilters(); }
-    }
   } catch(e) {}
+}
+
+// Apply covers.json to all books that don't have one yet
+function applyCoversFromMap() {
+  if (!Object.keys(coversMap).length) return;
+  let changed = false;
+  allBooks.forEach(b => {
+    if (!b.cover && b.id && coversMap[b.id]) {
+      b.cover = coversMap[b.id];
+      changed = true;
+    }
+  });
+  if (changed) save();
 }
 
 function setupDrop() {
@@ -833,6 +855,7 @@ function parseTxt(text) {
   let added=0, updated=0;
   books.forEach(b => { const k=`${b.title}|${b.author}`; if(map.has(k)){Object.assign(map.get(k),b);updated++;}else{map.set(k,b);added++;} });
   allBooks = Array.from(map.values());
+  applyCoversFromMap();
   save(); showLibrary(); toast(`✓ ${added} added, ${updated} updated`);
 }
 
