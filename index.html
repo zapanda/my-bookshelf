@@ -367,10 +367,25 @@
     /* ─── Stats ─── */
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 1.5rem;
     }
-    .stats-card-wide { grid-column: 1 / -1; }
+    /* Row 1: At a glance — full width */
+    .sc-full   { grid-column: span 6; }
+    /* Row 2 & 3: chart takes 4 cols, sidebar takes 2 */
+    .sc-chart  { grid-column: span 4; }
+    .sc-side   { grid-column: span 2; }
+    /* Row 4: two equal halves */
+    .sc-half   { grid-column: span 3; }
+
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .sc-full, .sc-chart, .sc-side, .sc-half { grid-column: span 2; }
+    }
+    @media (max-width: 580px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .sc-full, .sc-chart, .sc-side, .sc-half { grid-column: span 1; }
+    }
 
     .stats-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.75rem; box-shadow: var(--shadow-sm); }
 
@@ -394,19 +409,6 @@
     .year-lbl { font-family: var(--font-label); font-size: 0.6rem; color: var(--text-muted); }
     .year-cnt { font-family: var(--font-label); font-size: 0.62rem; font-weight: 700; color: var(--primary); }
 
-    /* ─── Line chart ─── */
-    .line-chart-wrap { position: relative; width: 100%; }
-    .line-chart-svg { width: 100%; display: block; overflow: visible; }
-    .line-chart-axis-lbl { font-family: var(--font-label); font-size: 0.62rem; fill: var(--text-muted); }
-    .line-chart-point { cursor: pointer; }
-    .line-chart-tooltip {
-      position: absolute; pointer-events: none;
-      background: var(--tertiary); color: var(--white);
-      font-family: var(--font-label); font-size: 0.72rem; font-weight: 600;
-      padding: 0.35rem 0.65rem; border-radius: var(--radius);
-      white-space: nowrap; opacity: 0; transition: opacity 0.15s;
-      transform: translate(-50%, -100%); margin-top: -8px;
-    }
 
     /* ─── Modal ─── */
     .modal-backdrop {
@@ -1010,114 +1012,18 @@ function renderWantList() {
 function makeDoughnut(segments, size=120, thickness=22) {
   const total = segments.reduce((s,x)=>s+x.value,0);
   if(!total) return `<svg width="${size}" height="${size}" class="doughnut-svg"><circle cx="${size/2}" cy="${size/2}" r="${(size-thickness)/2}" fill="none" stroke="var(--border)" stroke-width="${thickness}"/></svg>`;
-  const r=(size-thickness)/2, cx=size/2, cy=size/2;
-  const circ=2*Math.PI*r;
+  const r=(size-thickness)/2, cx=size/2, cy=size/2, circ=2*Math.PI*r;
   let offset=0;
   const paths=segments.filter(s=>s.value>0).map(s=>{
-    const dash=(s.value/total)*circ;
-    const gap=circ-dash;
+    const dash=(s.value/total)*circ, gap=circ-dash;
     const path=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${thickness}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" stroke-linecap="butt" transform="rotate(-90 ${cx} ${cy})"/>`;
-    offset+=dash;
-    return path;
+    offset+=dash; return path;
   });
   return `<svg width="${size}" height="${size}" class="doughnut-svg" viewBox="0 0 ${size} ${size}">${paths.join('')}</svg>`;
 }
 
-function makeLineChart(entries) {
-  // entries: [{label, value}] sorted by label
-  if (!entries.length) return '<p style="font-size:.83rem;color:var(--text-muted)">No page count data available.</p>';
-
-  const W = 800, H = 180;
-  const padL = 52, padR = 20, padT = 20, padB = 32;
-  const chartW = W - padL - padR;
-  const chartH = H - padT - padB;
-
-  const maxVal = Math.max(...entries.map(e=>e.value));
-  // Nice round Y max
-  const yMax = Math.ceil(maxVal / 500) * 500 || 500;
-  const yTicks = 4;
-
-  const xs = entries.map((_,i) => padL + (i / Math.max(entries.length-1,1)) * chartW);
-  const ys = entries.map(e => padT + chartH - (e.value / yMax) * chartH);
-
-  // Area fill path
-  const linePoints = entries.map((e,i) => `${xs[i].toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
-  const areaPath = `M ${xs[0].toFixed(1)},${(padT+chartH).toFixed(1)} ` +
-    entries.map((e,i)=>`L ${xs[i].toFixed(1)},${ys[i].toFixed(1)}`).join(' ') +
-    ` L ${xs[xs.length-1].toFixed(1)},${(padT+chartH).toFixed(1)} Z`;
-
-  // Smooth polyline using cardinal spline approximation
-  const linePath = entries.length < 2
-    ? `M ${xs[0]},${ys[0]}`
-    : (() => {
-        let d = `M ${xs[0].toFixed(1)},${ys[0].toFixed(1)}`;
-        for (let i = 0; i < entries.length - 1; i++) {
-          const x1 = xs[i], y1 = ys[i], x2 = xs[i+1], y2 = ys[i+1];
-          const cpx = (x1 + x2) / 2;
-          d += ` C ${cpx.toFixed(1)},${y1.toFixed(1)} ${cpx.toFixed(1)},${y2.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
-        }
-        return d;
-      })();
-
-  // Y-axis gridlines and labels
-  const yGridLines = Array.from({length: yTicks+1}, (_,i) => {
-    const val = Math.round((yMax / yTicks) * i);
-    const y = padT + chartH - (val / yMax) * chartH;
-    const lbl = val >= 1000 ? (val/1000).toFixed(0)+'k' : val;
-    return `
-      <line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
-      <text x="${(padL-6).toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="end" class="line-chart-axis-lbl">${lbl}</text>`;
-  }).join('');
-
-  // X-axis labels
-  const xLabels = entries.map((e,i) =>
-    `<text x="${xs[i].toFixed(1)}" y="${(H-4).toFixed(1)}" text-anchor="middle" class="line-chart-axis-lbl">${e.label}</text>`
-  ).join('');
-
-  // Data points with tooltip triggers
-  const points = entries.map((e,i) =>
-    `<circle class="line-chart-point" cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="4" fill="var(--white)" stroke="var(--primary)" stroke-width="2"
-      onmouseenter="showLineTooltip(event,'${e.label}: ${e.value.toLocaleString()} pages')"
-      onmouseleave="hideLineTooltip()"/>`
-  ).join('');
-
-  return `
-    <div class="line-chart-wrap">
-      <svg viewBox="0 0 ${W} ${H}" class="line-chart-svg">
-        <defs>
-          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.12"/>
-            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        ${yGridLines}
-        <path d="${areaPath}" fill="url(#areaGrad)"/>
-        <path d="${linePath}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        ${points}
-        ${xLabels}
-      </svg>
-      <div class="line-chart-tooltip" id="line-tooltip"></div>
-    </div>`;
-}
-
-function showLineTooltip(e, text) {
-  const t = document.getElementById('line-tooltip');
-  if (!t) return;
-  const wrap = t.parentElement.getBoundingClientRect();
-  const pt = e.target.getBoundingClientRect();
-  t.textContent = text;
-  t.style.left = (pt.left - wrap.left + pt.width/2) + 'px';
-  t.style.top  = (pt.top  - wrap.top) + 'px';
-  t.style.opacity = '1';
-}
-function hideLineTooltip() {
-  const t = document.getElementById('line-tooltip');
-  if (t) t.style.opacity = '0';
-}
-
 function renderStats() {
   const read = allBooks.filter(b=>b.shelf==='read');
-  const all  = allBooks;
 
   // ── by year ──
   const byYear={}, byPages={};
@@ -1125,8 +1031,10 @@ function renderStats() {
     const y=b.date_read?b.date_read.slice(0,4):null;
     if(y&&y>'2000'){byYear[y]=(byYear[y]||0)+1; if(b.pages)byPages[y]=(byPages[y]||0)+b.pages;}
   });
-  const years=Object.entries(byYear).sort(([a],[b])=>a.localeCompare(b));
-  const maxY=Math.max(...Object.values(byYear),1);
+  const years    = Object.entries(byYear).sort(([a],[b])=>a.localeCompare(b));
+  const maxY     = Math.max(...Object.values(byYear),1);
+  const pageYears= Object.entries(byPages).sort(([a],[b])=>a.localeCompare(b));
+  const maxP     = Math.max(...Object.values(byPages),1);
 
   // ── authors ──
   const byAuthor={};
@@ -1138,113 +1046,102 @@ function renderStats() {
   const rDist=[5,4,3,2,1].map(r=>({r,count:read.filter(b=>b.rating===r).length}));
   const maxR=Math.max(...rDist.map(d=>d.count),1);
 
-  // ── pages line chart data ──
-  const pageEntries = Object.entries(byPages)
-    .sort(([a],[b])=>a.localeCompare(b))
-    .map(([label,value])=>({label,value}));
-
   // ── tag stats (read books only) ──
-  const audioBooks  = read.filter(b=>(b.tags||[]).includes('audio'));
-  const readBooks   = read.filter(b=>!(b.tags||[]).includes('audio'));
-  const ownedRead   = read.filter(b=>(b.tags||[]).includes('owned'));
+  const audioBooks   = read.filter(b=>(b.tags||[]).includes('audio'));
+  const readBooks    = read.filter(b=>!(b.tags||[]).includes('audio'));
+  const ownedRead    = read.filter(b=>(b.tags||[]).includes('owned'));
   const notOwnedRead = read.filter(b=>!(b.tags||[]).includes('owned'));
-  const hasTagData  = allBooks.some(b=>b.tags&&b.tags.length>0);
+  const hasTagData   = allBooks.some(b=>b.tags&&b.tags.length>0);
 
-  // ── consumption doughnut ──
   const consumeSegs=[
     {value:readBooks.length,  color:'var(--primary)', label:'Read'},
     {value:audioBooks.length, color:'#6a5acd',        label:'Audiobook'},
   ];
-  const consumeDoughnut = makeDoughnut(consumeSegs);
-
-  // ── ownership doughnut (read books only) ──
   const ownSegs=[
-    {value:ownedRead.length,    color:'#2d7a4f',          label:'Owned'},
-    {value:notOwnedRead.length, color:'var(--border-md)',  label:'Digital / borrowed'},
+    {value:ownedRead.length,    color:'#2d7a4f',         label:'Owned'},
+    {value:notOwnedRead.length, color:'var(--border-md)', label:'Digital / borrowed'},
   ];
-  const ownDoughnut = makeDoughnut(ownSegs);
 
   // ── misc ──
   const bestYear = years.length ? years.reduce((a,b)=>b[1]>a[1]?b:a) : null;
   const booksWithPages=read.filter(b=>b.pages>0);
   const avgPages=booksWithPages.length?Math.round(booksWithPages.reduce((s,b)=>s+b.pages,0)/booksWithPages.length):0;
   const totalPages=booksWithPages.reduce((s,b)=>s+b.pages,0);
-  const avgRating = arr => { const r=arr.filter(b=>b.rating>0); return r.length?(r.reduce((s,b)=>s+b.rating,0)/r.length).toFixed(1):'—'; };
+  const avgRating=arr=>{ const r=arr.filter(b=>b.rating>0); return r.length?(r.reduce((s,b)=>s+b.rating,0)/r.length).toFixed(1):'—'; };
+
+  // ── bar chart helper (shared by both year charts) ──
+  const barChart = (entries, maxVal, fmtLbl) => {
+    if(!entries.length) return '<p style="font-size:.83rem;color:var(--text-muted)">No data found.</p>';
+    return `<div class="year-chart" style="height:130px">${entries.map(([y,n])=>`
+      <div class="year-col">
+        <div class="year-cnt">${fmtLbl ? fmtLbl(n) : n}</div>
+        <div class="year-bar" style="height:${Math.max(5,(n/maxVal)*100)}px" title="${y}: ${n}"></div>
+        <div class="year-lbl">${y}</div>
+      </div>`).join('')}</div>`;
+  };
+
+  const fmtPages = n => n >= 1000 ? (n/1000).toFixed(1)+'k' : n;
 
   document.getElementById('stats-container').innerHTML=`<div class="stats-grid">
 
-    <!-- Books per year — wide -->
-    <div class="stats-card stats-card-wide">
-      <div class="sc-title">Books read per year</div>
-      ${years.length?`<div class="year-chart">${years.map(([y,n])=>`
-        <div class="year-col">
-          <div class="year-cnt">${n}</div>
-          <div class="year-bar" style="height:${Math.max(5,(n/maxY)*90)}px" title="${y}: ${n}"></div>
-          <div class="year-lbl">${y}</div>
-        </div>`).join('')}</div>
-        ${bestYear?`<div class="pace-note">Best year: <span class="pace-highlight">${bestYear[0]}</span> with ${bestYear[1]} books · Total read: <span class="pace-highlight">${read.length}</span> · Total pages: <span class="pace-highlight">${totalPages>999?(totalPages/1000).toFixed(1)+'k':totalPages}</span></div>`:''}
-      `:'<p style="font-size:.83rem;color:var(--text-muted)">No date-read data found.</p>'}
-    </div>
-
-    <!-- Quick numbers -->
-    <div class="stats-card">
+    <!-- ROW 1: At a glance — full width -->
+    <div class="stats-card sc-full">
       <div class="sc-title">At a glance</div>
-      <div class="highlight-grid">
-        <div class="highlight-cell">
-          <div class="highlight-num" style="color:var(--primary)">${read.length}</div>
-          <div class="highlight-lbl">Books read</div>
-        </div>
-        <div class="highlight-cell">
-          <div class="highlight-num" style="color:var(--secondary)">${avgPages||'—'}</div>
-          <div class="highlight-lbl">Avg pages</div>
-        </div>
-        <div class="highlight-cell">
-          <div class="highlight-num" style="color:#2d7a4f">${allBooks.filter(b=>b.shelf==='want').length}</div>
-          <div class="highlight-lbl">Want to read</div>
-        </div>
-        <div class="highlight-cell">
-          <div class="highlight-num" style="color:var(--tertiary)">${avgRating(read)}</div>
-          <div class="highlight-lbl">Avg rating</div>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1rem">
+        <div class="highlight-cell"><div class="highlight-num" style="color:var(--primary)">${read.length}</div><div class="highlight-lbl">Books read</div></div>
+        <div class="highlight-cell"><div class="highlight-num" style="color:var(--secondary)">${avgPages||'—'}</div><div class="highlight-lbl">Avg pages</div></div>
+        <div class="highlight-cell"><div class="highlight-num" style="color:var(--tertiary)">${totalPages>999?(totalPages/1000).toFixed(1)+'k':totalPages||'—'}</div><div class="highlight-lbl">Total pages</div></div>
+        <div class="highlight-cell"><div class="highlight-num" style="color:var(--tertiary)">${avgRating(read)}</div><div class="highlight-lbl">Avg rating</div></div>
+        <div class="highlight-cell"><div class="highlight-num" style="color:#2d7a4f">${allBooks.filter(b=>b.shelf==='want').length}</div><div class="highlight-lbl">Want to read</div></div>
+        <div class="highlight-cell"><div class="highlight-num" style="color:#b07d15">${allBooks.filter(b=>b.shelf==='reading').length}</div><div class="highlight-lbl">Reading now</div></div>
       </div>
     </div>
 
-    <!-- Top authors -->
-    <div class="stats-card">
+    <!-- ROW 2: Books/year chart + Top authors -->
+    <div class="stats-card sc-chart">
+      <div class="sc-title">Books read per year</div>
+      ${barChart(years, maxY, null)}
+      ${bestYear?`<div class="pace-note">Best year: <span class="pace-highlight">${bestYear[0]}</span> with <span class="pace-highlight">${bestYear[1]}</span> books</div>`:''}
+    </div>
+    <div class="stats-card sc-side">
       <div class="sc-title">Top authors</div>
       ${topA.length?topA.map(([a,n])=>`<div class="bar-row"><div class="bar-lbl" title="${esc(a)}">${esc(a)}</div><div class="bar-track"><div class="bar-fill" style="width:${(n/maxA)*100}%"></div></div><div class="bar-val">${n}</div></div>`).join('')
       :'<p style="font-size:.83rem;color:var(--text-muted)">No data yet.</p>'}
     </div>
 
+    <!-- ROW 3: Pages/year chart + Rating breakdown -->
+    <div class="stats-card sc-chart">
+      <div class="sc-title">Pages read per year</div>
+      ${barChart(pageYears, maxP, fmtPages)}
+    </div>
+    <div class="stats-card sc-side">
+      <div class="sc-title">Your rating breakdown</div>
+      ${rDist.map(({r,count})=>`<div class="bar-row">
+        <div class="bar-lbl">${'★'.repeat(r)}${'☆'.repeat(5-r)} ${r} star${r!==1?'s':''}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(count/maxR)*100}%;background:${r>=4?'var(--primary)':r===3?'var(--secondary)':'var(--text-faint)'}"></div></div>
+        <div class="bar-val">${count}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- ROW 4: Tag doughnuts (only if tag data present) -->
     ${hasTagData?`
-    <!-- How consumed doughnut -->
-    <div class="stats-card">
+    <div class="stats-card sc-half">
       <div class="sc-title">How you consumed books</div>
       <div class="doughnut-wrap">
-        ${consumeDoughnut}
+        ${makeDoughnut(consumeSegs)}
         <div class="doughnut-legend">
-          ${consumeSegs.map(s=>`<div class="legend-row">
-            <div class="legend-dot" style="background:${s.color}"></div>
-            <div class="legend-lbl">${s.label}</div>
-            <div class="legend-val">${s.value}</div>
-          </div>`).join('')}
-          <div class="legend-row" style="margin-top:0.25rem;padding-top:0.5rem;border-top:1px solid var(--border)">
-            <div class="legend-lbl" style="color:var(--text-muted);font-size:0.68rem">Avg rating: audio</div>
-            <div class="legend-val" style="font-size:0.72rem">${avgRating(audioBooks)} ★</div>
-          </div>
-          <div class="legend-row">
-            <div class="legend-lbl" style="color:var(--text-muted);font-size:0.68rem">Avg rating: read</div>
-            <div class="legend-val" style="font-size:0.72rem">${avgRating(readBooks)} ★</div>
+          ${consumeSegs.map(s=>`<div class="legend-row"><div class="legend-dot" style="background:${s.color}"></div><div class="legend-lbl">${s.label}</div><div class="legend-val">${s.value}</div></div>`).join('')}
+          <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border)">
+            <div class="legend-row"><div class="legend-lbl" style="color:var(--text-muted);font-size:0.68rem">Avg rating: audio</div><div class="legend-val" style="font-size:0.72rem">${avgRating(audioBooks)} ★</div></div>
+            <div class="legend-row"><div class="legend-lbl" style="color:var(--text-muted);font-size:0.68rem">Avg rating: read</div><div class="legend-val" style="font-size:0.72rem">${avgRating(readBooks)} ★</div></div>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Ownership doughnut (read books only) -->
-    <div class="stats-card">
+    <div class="stats-card sc-half">
       <div class="sc-title">Your physical library <span style="font-size:0.72rem;font-family:var(--font-label);color:var(--text-muted);font-weight:400;letter-spacing:0">(read books)</span></div>
       <div class="doughnut-wrap">
-        ${ownDoughnut}
+        ${makeDoughnut(ownSegs)}
         <div class="doughnut-legend">
           <div class="legend-row"><div class="legend-dot" style="background:#2d7a4f"></div><div class="legend-lbl">Owned</div><div class="legend-val">${ownedRead.length}</div></div>
           <div class="legend-row"><div class="legend-dot" style="background:var(--border-md)"></div><div class="legend-lbl">Digital / borrowed</div><div class="legend-val">${notOwnedRead.length}</div></div>
@@ -1256,22 +1153,6 @@ function renderStats() {
       </div>
     </div>
     `:''}
-
-    <!-- Rating breakdown -->
-    <div class="stats-card">
-      <div class="sc-title">Your rating breakdown</div>
-      ${rDist.map(({r,count})=>`<div class="bar-row">
-        <div class="bar-lbl">${'★'.repeat(r)}${'☆'.repeat(5-r)} ${r} star${r!==1?'s':''}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(count/maxR)*100}%;background:${r>=4?'var(--primary)':r===3?'var(--secondary)':'var(--text-faint)'}"></div></div>
-        <div class="bar-val">${count}</div>
-      </div>`).join('')}
-    </div>
-
-    <!-- Pages per year — wide line chart -->
-    <div class="stats-card stats-card-wide">
-      <div class="sc-title">Pages read per year</div>
-      ${makeLineChart(pageEntries)}
-    </div>
 
   </div>`;
 }
