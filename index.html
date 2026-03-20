@@ -744,9 +744,13 @@
 const GITHUB_CSV_URL = '';
 // Set to: 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/goodreads_library_export.csv'
 
+const GITHUB_COVERS_URL = '';
+// Set to: 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/covers.json'
+// Run enrich-covers.js locally first, commit covers.json, then set this URL.
+
 // ═══ STATE ═══
 let allBooks = [], filteredBooks = [], viewMode = 'grid';
-let coverCache = {}, searchTimer = null, pendingBook = null;
+let coverCache = {}, coversMap = {}, searchTimer = null, pendingBook = null;
 let activeTagFilter = 'all';
 
 const SHELF_MAP = {
@@ -758,10 +762,25 @@ const SHELF_MAP = {
 // ═══ INIT ═══
 window.addEventListener('DOMContentLoaded', () => {
   setupDrop();
+  if (GITHUB_COVERS_URL) loadCoversMap();
   const saved = localStorage.getItem('myshelf_v2');
   if (saved) { try { allBooks = JSON.parse(saved); showLibrary(); } catch(e){} }
   if (!allBooks.length && GITHUB_CSV_URL) fetchGH();
 });
+
+async function loadCoversMap() {
+  try {
+    const res = await fetch(GITHUB_COVERS_URL + '?t=' + Date.now());
+    if (!res.ok) return;
+    coversMap = await res.json();
+    // If books are already displayed, apply covers immediately
+    if (allBooks.length) {
+      let changed = false;
+      allBooks.forEach(b => { if (!b.cover && b.id && coversMap[b.id]) { b.cover = coversMap[b.id]; changed = true; } });
+      if (changed) { save(); applyFilters(); }
+    }
+  } catch(e) {}
+}
 
 function setupDrop() {
   const z = document.getElementById('drop-zone'); if (!z) return;
@@ -802,10 +821,12 @@ function parseTxt(text) {
     const title = g(x.title); if (!title) continue;
     const raw = g(x.shelf).toLowerCase();
     const shelf = SHELF_MAP[raw]||(raw.includes('want')||raw.includes('to-read')?'want':'read');
-    // Parse custom bookshelves tags (comma-separated, excluding the exclusive shelf values)
     const exclusiveVals = new Set(['read','currently-reading','to-read']);
     const rawTags = g(x.bookshelves).split(',').map(t=>t.trim().toLowerCase()).filter(t=>t&&!exclusiveVals.has(t));
-    books.push({ id:g(x.gid)||`r${i}`, title, author:g(x.author), isbn:g(x.isbn).replace(/[^0-9X]/gi,''), rating:parseInt(g(x.rating))||0, shelf, tags:rawTags, pages:parseInt(g(x.pages))||0, year_published:parseInt(g(x.year))||0, date_read:g(x.dread), date_added:g(x.dadded), cover:null, description:'', source:'goodreads' });
+    const gid = g(x.gid)||`r${i}`;
+    // Apply cover from coversMap immediately on import if available
+    const cover = coversMap[gid] || null;
+    books.push({ id:gid, title, author:g(x.author), isbn:g(x.isbn).replace(/[^0-9X]/gi,''), rating:parseInt(g(x.rating))||0, shelf, tags:rawTags, pages:parseInt(g(x.pages))||0, year_published:parseInt(g(x.year))||0, date_read:g(x.dread), date_added:g(x.dadded), cover, description:'', source:'goodreads' });
   }
   if (!books.length) { toast('No books found'); return; }
   const map = new Map(allBooks.map(b => [`${b.title}|${b.author}`, b]));
@@ -821,20 +842,58 @@ function parseRow(line) {
   r.push(cur); return r;
 }
 
-// ═══ GOOGLE BOOKS ═══
+// ═══ COVER LOOKUP (3-stage: covers.json → Open Library → Google Books) ═══
 async function fetchCover(b) {
-  const k = b.isbn||`${b.title}|${b.author}`;
-  if (coverCache[k]) return coverCache[k];
   if (b.cover) return b.cover;
-  try {
-    const q = b.isbn ? `isbn:${b.isbn}` : encodeURIComponent(`intitle:${b.title}${b.author?' inauthor:'+b.author:''}`);
-    const d = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1&fields=items(volumeInfo(imageLinks,description))`)).json();
-    const info = d?.items?.[0]?.volumeInfo;
-    const cover = info?.imageLinks?.thumbnail?.replace('http:','https:').replace('zoom=1','zoom=2')||null;
-    coverCache[k]=cover;
-    if(cover){b.cover=cover; if(info?.description&&!b.description)b.description=info.description; save();}
-    return cover;
-  } catch(e){return null;}
+
+  // Stage 1: covers.json (committed to repo, pre-fetched by enrich-covers.js)
+  if (b.id && coversMap[b.id]) {
+    b.cover = coversMap[b.id]; save(); return b.cover;
+  }
+
+  // Session cache to avoid duplicate live requests
+  const cacheKey = b.isbn || `${b.title}|${b.author}`;
+  if (coverCache[cacheKey] !== undefined) return coverCache[cacheKey] || null;
+
+  let cover = null;
+
+  // Stage 2a: Open Library by ISBN (direct image URL, no rate limit)
+  if (!cover && b.isbn) {
+    try {
+      const url = `https://covers.openlibrary.org/b/isbn/${b.isbn}-L.jpg`;
+      const res = await fetch(url, { method: 'HEAD' });
+      const len = parseInt(res.headers.get('content-length') || '0');
+      if (res.ok && len > 1000) cover = url; // OL returns ~43-byte placeholder for missing
+    } catch(e) {}
+  }
+
+  // Stage 2b: Open Library search (title + author)
+  if (!cover) {
+    try {
+      const q = encodeURIComponent(`${b.title} ${b.author}`);
+      const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i&limit=1`);
+      if (res.ok) {
+        const d = await res.json();
+        const coverId = d?.docs?.[0]?.cover_i;
+        if (coverId) cover = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+      }
+    } catch(e) {}
+  }
+
+  // Stage 3: Google Books fallback
+  if (!cover) {
+    try {
+      const q = b.isbn ? `isbn:${b.isbn}` : encodeURIComponent(`intitle:${b.title}${b.author?' inauthor:'+b.author:''}`);
+      const d = await (await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1&fields=items(volumeInfo(imageLinks,description))`)).json();
+      const info = d?.items?.[0]?.volumeInfo;
+      cover = info?.imageLinks?.thumbnail?.replace('http:','https:').replace('zoom=1','zoom=3').replace('&edge=curl','')||null;
+      if (cover && info?.description && !b.description) b.description = info.description;
+    } catch(e) {}
+  }
+
+  coverCache[cacheKey] = cover;
+  if (cover) { b.cover = cover; save(); }
+  return cover;
 }
 
 async function searchAPI(q) {
