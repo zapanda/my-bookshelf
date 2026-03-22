@@ -833,6 +833,18 @@
           <button class="btn-muted" onclick="closeSettings()">Cancel</button>
           <button class="btn btn-outline" onclick="exportManualCovers()" style="margin-left:auto" title="Download manual-covers.json to commit to GitHub">↓ Export manual covers</button>
         </div>
+
+        <!-- Danger zone -->
+        <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem">
+            <div>
+              <div style="font-family:var(--font-label);font-size:0.72rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.2rem">Library cache</div>
+              <div id="last-synced-lbl" style="font-family:var(--font-label);font-size:0.68rem;color:var(--text-muted)">—</div>
+            </div>
+            <button class="btn-danger" onclick="clearCacheAndResync()" style="white-space:nowrap">Clear cache &amp; resync</button>
+          </div>
+          <p style="font-family:var(--font-label);font-size:0.68rem;color:var(--text-muted);margin-top:0.5rem;line-height:1.6">Use this if your library looks stale — especially in Firefox. Wipes the local book cache and re-fetches everything fresh from GitHub.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -1014,6 +1026,7 @@ function parseTxt(text, { silent = false } = {}) {
   allBooks = Array.from(map.values());
   applyCoversFromMap();
   save();
+  localStorage.setItem('myshelf_last_synced', Date.now().toString());
   if (document.getElementById('library-content').style.display === 'none') showLibrary();
   else { renderStrip(); populateYears(); applyFilters(); }
   if (!silent && added > 0) toast(`✓ ${added} new book${added!==1?'s':''} added`);
@@ -1497,11 +1510,43 @@ function showSettings() {
   document.getElementById('cfg-csv-url').value          = cfg.csvUrl          || '';
   document.getElementById('cfg-covers-url').value       = cfg.coversUrl       || '';
   document.getElementById('cfg-manual-covers-url').value= cfg.manualCoversUrl || '';
+
+  // Show last synced timestamp
+  const ts = localStorage.getItem('myshelf_last_synced');
+  const lbl = document.getElementById('last-synced-lbl');
+  if (lbl) {
+    if (ts) {
+      const d = new Date(parseInt(ts));
+      lbl.textContent = `Last synced from GitHub: ${d.toLocaleDateString()} at ${d.toLocaleTimeString()}`;
+    } else {
+      lbl.textContent = 'Never synced from GitHub';
+    }
+  }
+
   document.getElementById('settings-modal').style.display = 'block';
 }
 
 function closeSettings() {
   document.getElementById('settings-modal').style.display = 'none';
+}
+
+async function clearCacheAndResync() {
+  if (!confirm('This will clear your local book cache and re-fetch everything from GitHub. Your Settings and manual cover overrides will be kept. Continue?')) return;
+  closeSettings();
+
+  // Wipe only the book cache — keep config and manual covers
+  localStorage.removeItem('myshelf_v2');
+  localStorage.removeItem('myshelf_last_synced');
+  allBooks = [];
+  coversMap = {};
+
+  toast('🔄 Cache cleared — reloading from GitHub…');
+
+  // Re-fetch covers then CSV fresh
+  const coversP       = getCoversUrl()       ? loadCoversMap()       : Promise.resolve();
+  const manualCoversP = getManualCoversUrl() ? loadManualCoversMap() : Promise.resolve();
+  await Promise.all([coversP, manualCoversP]);
+  await syncFromGitHub({ silent: false });
 }
 
 function handleSettingsClick(e) {
