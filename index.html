@@ -900,7 +900,7 @@ async function syncFromGitHub({ silent = false } = {}) {
   if (!getCSVUrl()) return;
   setSyncing(true);
   try {
-    const r = await fetch(getCSVUrl() + '?t=' + Date.now());
+    const r = await fetch(getCSVUrl(), { cache: 'no-store' });
     if (r.ok) {
       const text = await r.text();
       parseTxt(text, { silent });
@@ -936,7 +936,7 @@ async function syncNow() {
 
 async function loadCoversMap() {
   try {
-    const res = await fetch(getCoversUrl() + '?t=' + Date.now());
+    const res = await fetch(getCoversUrl(), { cache: 'no-store' });
     if (!res.ok) return;
     coversMap = await res.json();
   } catch(e) {}
@@ -944,7 +944,7 @@ async function loadCoversMap() {
 
 async function loadManualCoversMap() {
   try {
-    const res = await fetch(getManualCoversUrl() + '?t=' + Date.now());
+    const res = await fetch(getManualCoversUrl(), { cache: 'no-store' });
     if (!res.ok) return;
     const remote = await res.json();
     // Merge remote into local — local (user's latest edits) takes precedence
