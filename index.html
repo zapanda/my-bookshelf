@@ -608,10 +608,9 @@
 
     <div class="header-actions">
       <button class="btn btn-outline" onclick="showAddBook()">+ Add Book</button>
-      <label class="btn btn-primary" style="cursor:pointer">
-        Import CSV
-        <input type="file" accept=".csv" style="display:none" onchange="handleCSVUpload(event)" />
-      </label>
+      <button id="sync-btn" class="btn btn-outline" onclick="syncNow()" title="Sync from GitHub" style="padding:0.5rem 0.7rem;display:none">
+        <svg id="sync-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
       <button class="btn btn-outline" onclick="showSettings()" title="Settings" style="padding:0.5rem 0.7rem">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -619,25 +618,43 @@
   </div>
 </header>
 
-<!-- Upload screen -->
+<!-- Setup screen (shown when no CSV URL is configured) -->
 <div id="upload-screen">
   <div class="upload-masthead">
-    <div class="eyebrow">Your personal reading record</div>
-    <h1>Every book<br/>you've ever <em>loved.</em></h1>
-    <p>Import your Goodreads library to get started.<br/>Your data stays in your browser — private, always.</p>
+    <div class="eyebrow">Welcome to myshelf</div>
+    <h1>Your personal<br/><em>reading universe.</em></h1>
+    <p>To get started, add your Goodreads CSV to your GitHub repo<br/>and paste the raw URL in Settings.</p>
   </div>
 
-  <label class="drop-zone" id="drop-zone" style="cursor:pointer">
-    <div class="drop-icon">📚</div>
-    <h3>Drop your Goodreads CSV here</h3>
-    <p>or click to browse files</p>
-    <input type="file" accept=".csv" style="display:none" onchange="handleCSVUpload(event)" />
-  </label>
-
-  <p class="upload-hint">
-    Export from Goodreads: <strong>My Books → Import/Export → Export Library</strong><br/>
-    Or try a <a href="#" onclick="loadSample(event)">sample library</a> to preview the app.
-  </p>
+  <div style="background:var(--white);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2rem;max-width:440px;width:100%;box-shadow:var(--shadow-sm)">
+    <div style="display:flex;flex-direction:column;gap:1.25rem">
+      <div style="display:flex;gap:1rem;align-items:flex-start">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-family:var(--font-label);font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">1</div>
+        <div>
+          <div style="font-family:var(--font-label);font-size:0.82rem;font-weight:700;color:var(--tertiary);margin-bottom:0.2rem">Export from Goodreads</div>
+          <div style="font-family:var(--font-body);font-size:0.78rem;color:var(--text-muted);line-height:1.6">My Books → Import/Export → Export Library → commit the CSV to your GitHub repo</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:1rem;align-items:flex-start">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-family:var(--font-label);font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">2</div>
+        <div>
+          <div style="font-family:var(--font-label);font-size:0.82rem;font-weight:700;color:var(--tertiary);margin-bottom:0.2rem">Open Settings</div>
+          <div style="font-family:var(--font-body);font-size:0.78rem;color:var(--text-muted);line-height:1.6">Click the ⚙ gear icon → paste the raw GitHub URL of your CSV file</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:1rem;align-items:flex-start">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-family:var(--font-label);font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">3</div>
+        <div>
+          <div style="font-family:var(--font-label);font-size:0.82rem;font-weight:700;color:var(--tertiary);margin-bottom:0.2rem">Your library loads automatically</div>
+          <div style="font-family:var(--font-body);font-size:0.78rem;color:var(--text-muted);line-height:1.6">The app fetches your CSV on every visit — no manual imports ever again</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;gap:0.75rem;align-items:center">
+      <button class="btn btn-primary" onclick="showSettings()">Open Settings →</button>
+      <a href="#" onclick="loadSample(event)" style="font-family:var(--font-label);font-size:0.75rem;color:var(--text-muted);text-decoration:none" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-muted)'">Preview with sample data</a>
+    </div>
+  </div>
 </div>
 
 <!-- Library -->
@@ -849,16 +866,21 @@ const SHELF_MAP = {
 
 // ═══ INIT ═══
 window.addEventListener('DOMContentLoaded', async () => {
-  setupDrop();
-
-  // Load manual covers from localStorage first (instant)
+  // Load manual covers from localStorage (instant, always available)
   try { manualCovers = JSON.parse(localStorage.getItem('myshelf_manual_covers') || '{}'); } catch(e) {}
 
-  // Load covers.json and manual-covers.json from GitHub before rendering
+  // No CSV URL configured → show setup screen
+  if (!getCSVUrl()) {
+    document.getElementById('upload-screen').style.display = 'flex';
+    return;
+  }
+
+  // Fetch covers maps from GitHub (needed before rendering for best cover hit rate)
   const coversP       = getCoversUrl()       ? loadCoversMap()       : Promise.resolve();
   const manualCoversP = getManualCoversUrl() ? loadManualCoversMap() : Promise.resolve();
   await Promise.all([coversP, manualCoversP]);
 
+  // Render from cache immediately if available
   const saved = localStorage.getItem('myshelf_v2');
   if (saved) {
     try {
@@ -868,8 +890,49 @@ window.addEventListener('DOMContentLoaded', async () => {
       showLibrary();
     } catch(e) {}
   }
-  if (!allBooks.length && getCSVUrl()) fetchGH();
+
+  // Always fetch fresh CSV from GitHub (background if cache was shown, foreground if not)
+  syncFromGitHub({ silent: allBooks.length > 0 });
 });
+
+// Sync from GitHub CSV — called on startup and by the manual sync button
+async function syncFromGitHub({ silent = false } = {}) {
+  if (!getCSVUrl()) return;
+  setSyncing(true);
+  try {
+    const r = await fetch(getCSVUrl() + '?t=' + Date.now());
+    if (r.ok) {
+      const text = await r.text();
+      parseTxt(text, { silent });
+    } else if (!silent) {
+      toast('⚠ Could not reach GitHub — check the CSV URL in Settings');
+    }
+  } catch(e) {
+    if (!silent) toast('⚠ Network error — is GitHub reachable?');
+  }
+  setSyncing(false);
+}
+
+function setSyncing(on) {
+  const btn  = document.getElementById('sync-btn');
+  const icon = document.getElementById('sync-icon');
+  if (!btn) return;
+  btn.style.display = 'flex';
+  if (on) {
+    icon.style.animation = 'spin 1s linear infinite';
+    btn.disabled = true;
+    btn.title = 'Syncing…';
+  } else {
+    icon.style.animation = '';
+    btn.disabled = false;
+    btn.title = 'Sync from GitHub';
+  }
+}
+
+// Manual sync button in header
+async function syncNow() {
+  await syncFromGitHub({ silent: false });
+}
 
 async function loadCoversMap() {
   try {
@@ -908,22 +971,12 @@ function applyCoversFromMap() {
   if (changed) save();
 }
 
-function setupDrop() {
-  const z = document.getElementById('drop-zone'); if (!z) return;
-  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('drag-over'); });
-  z.addEventListener('dragleave', () => z.classList.remove('drag-over'));
-  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('drag-over'); if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
-}
+function setupDrop() {} // no-op — kept so any stray references don't break
 
-async function fetchGH() {
-  try { const r = await fetch(getCSVUrl()+'?t='+Date.now()); if (r.ok) parseTxt(await r.text()); } catch(e) {}
-}
+async function fetchGH() { await syncFromGitHub({ silent: true }); } // legacy alias
 
 // ═══ CSV ═══
-function handleCSVUpload(e) { if (e.target.files[0]) parseFile(e.target.files[0]); }
-function parseFile(f) { const r = new FileReader(); r.onload = e => parseTxt(e.target.result); r.readAsText(f); }
-
-function parseTxt(text) {
+function parseTxt(text, { silent = false } = {}) {
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 2) { toast('CSV appears empty'); return; }
   const headers = parseRow(lines[0]).map(h => h.trim().toLowerCase());
@@ -954,13 +1007,17 @@ function parseTxt(text) {
     const cover = coversMap[gid] || null;
     books.push({ id:gid, title, author:g(x.author), isbn:g(x.isbn).replace(/[^0-9X]/gi,''), rating:parseInt(g(x.rating))||0, shelf, tags:rawTags, pages:parseInt(g(x.pages))||0, year_published:parseInt(g(x.year))||0, date_read:g(x.dread), date_added:g(x.dadded), cover, description:'', source:'goodreads' });
   }
-  if (!books.length) { toast('No books found'); return; }
+  if (!books.length) { if (!silent) toast('No books found in CSV'); return; }
   const map = new Map(allBooks.map(b => [`${b.title}|${b.author}`, b]));
   let added=0, updated=0;
   books.forEach(b => { const k=`${b.title}|${b.author}`; if(map.has(k)){Object.assign(map.get(k),b);updated++;}else{map.set(k,b);added++;} });
   allBooks = Array.from(map.values());
   applyCoversFromMap();
-  save(); showLibrary(); toast(`✓ ${added} added, ${updated} updated`);
+  save();
+  if (document.getElementById('library-content').style.display === 'none') showLibrary();
+  else { renderStrip(); populateYears(); applyFilters(); }
+  if (!silent && added > 0) toast(`✓ ${added} new book${added!==1?'s':''} added`);
+  else if (!silent) toast('✓ Library up to date');
 }
 
 function parseRow(line) {
@@ -1457,13 +1514,14 @@ async function saveSettings() {
   const manualCoversUrl = document.getElementById('cfg-manual-covers-url').value.trim();
   saveCfg({ csvUrl, coversUrl, manualCoversUrl });
   closeSettings();
-  toast('✓ Settings saved');
-  if (coversUrl) {
-    await loadCoversMap();
-    allBooks.forEach(b => { if (b.cover === null) b.cover = undefined; });
-    applyCoversFromMap();
-    if (allBooks.length) applyFilters();
-  }
+  toast('✓ Settings saved — syncing…');
+
+  // Reload cover maps then sync CSV
+  const coversP       = coversUrl       ? loadCoversMap()       : Promise.resolve();
+  const manualCoversP = manualCoversUrl ? loadManualCoversMap() : Promise.resolve();
+  await Promise.all([coversP, manualCoversP]);
+
+  if (csvUrl) await syncFromGitHub({ silent: false });
 }
 
 function exportManualCovers() {
