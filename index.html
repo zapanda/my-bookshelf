@@ -1015,21 +1015,38 @@ function parseTxt(text, { silent = false } = {}) {
     const exclusiveVals = new Set(['read','currently-reading','to-read']);
     const rawTags = g(x.bookshelves).split(',').map(t=>t.trim().toLowerCase()).filter(t=>t&&!exclusiveVals.has(t));
     const gid = g(x.gid)||`r${i}`;
-    // Apply cover from coversMap immediately on import if available
-    const cover = coversMap[gid] || null;
+    // Only set cover from coversMap if it exists — never set null (preserves runtime-enriched covers)
+    const cover = coversMap[gid] || manualCovers[gid] || undefined;
     books.push({ id:gid, title, author:g(x.author), isbn:g(x.isbn).replace(/[^0-9X]/gi,''), rating:parseInt(g(x.rating))||0, shelf, tags:rawTags, pages:parseInt(g(x.pages))||0, year_published:parseInt(g(x.year))||0, date_read:g(x.dread), date_added:g(x.dadded), cover, description:'', source:'goodreads' });
   }
   if (!books.length) { if (!silent) toast('No books found in CSV'); return; }
   const map = new Map(allBooks.map(b => [`${b.title}|${b.author}`, b]));
   let added=0, updated=0;
-  books.forEach(b => { const k=`${b.title}|${b.author}`; if(map.has(k)){Object.assign(map.get(k),b);updated++;}else{map.set(k,b);added++;} });
+  books.forEach(b => {
+    const k = `${b.title}|${b.author}`;
+    if (map.has(k)) {
+      const existing = map.get(k);
+      // Merge: CSV fields always win (shelf, rating, dates, tags, pages)
+      // but never overwrite enriched data (cover, description) with empty values
+      const preservedCover = existing.cover || b.cover;
+      const preservedDesc  = existing.description || b.description;
+      Object.assign(existing, b);
+      existing.cover       = preservedCover;
+      existing.description = preservedDesc;
+      updated++;
+    } else {
+      map.set(k, b);
+      added++;
+    }
+  });
   allBooks = Array.from(map.values());
   applyCoversFromMap();
   save();
   localStorage.setItem('myshelf_last_synced', Date.now().toString());
   if (document.getElementById('library-content').style.display === 'none') showLibrary();
   else { renderStrip(); populateYears(); applyFilters(); }
-  if (!silent && added > 0) toast(`✓ ${added} new book${added!==1?'s':''} added`);
+  if (!silent && added > 0) toast(`✓ ${added} new book${added!==1?'s':''} synced`);
+  else if (!silent && updated > 0) toast('✓ Library updated');
   else if (!silent) toast('✓ Library up to date');
 }
 
