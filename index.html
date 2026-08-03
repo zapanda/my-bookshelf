@@ -1020,26 +1020,34 @@ function parseTxt(text, { silent = false } = {}) {
     books.push({ id:gid, title, author:g(x.author), isbn:g(x.isbn).replace(/[^0-9X]/gi,''), rating:parseInt(g(x.rating))||0, shelf, tags:rawTags, pages:parseInt(g(x.pages))||0, year_published:parseInt(g(x.year))||0, date_read:g(x.dread), date_added:g(x.dadded), cover, description:'', source:'goodreads' });
   }
   if (!books.length) { if (!silent) toast('No books found in CSV'); return; }
-  const map = new Map(allBooks.map(b => [`${b.title}|${b.author}`, b]));
+
+  // Build lookup maps — prefer ID-based matching (stable), fall back to Title|Author
+  // for manually-added books which don't have a Goodreads ID
+  const mapById    = new Map(allBooks.filter(b=>b.source==='goodreads').map(b => [b.id, b]));
+  const mapByTitle = new Map(allBooks.filter(b=>b.source!=='goodreads').map(b => [`${b.title}|${b.author}`, b]));
+
   let added=0, updated=0;
+  const seen = new Set();
+
   books.forEach(b => {
-    const k = `${b.title}|${b.author}`;
-    if (map.has(k)) {
-      const existing = map.get(k);
-      // Merge: CSV fields always win (shelf, rating, dates, tags, pages)
-      // but never overwrite enriched data (cover, description) with empty values
+    const existing = mapById.get(b.id) || mapByTitle.get(`${b.title}|${b.author}`);
+    if (existing) {
       const preservedCover = existing.cover || b.cover;
       const preservedDesc  = existing.description || b.description;
       Object.assign(existing, b);
       existing.cover       = preservedCover;
       existing.description = preservedDesc;
+      seen.add(existing);
       updated++;
     } else {
-      map.set(k, b);
+      allBooks.push(b);
+      seen.add(b);
       added++;
     }
   });
-  allBooks = Array.from(map.values());
+
+  // Remove stale Goodreads entries no longer in the CSV (keeps manually-added books)
+  allBooks = allBooks.filter(b => b.source !== 'goodreads' || seen.has(b));
   applyCoversFromMap();
   save();
   localStorage.setItem('myshelf_last_synced', Date.now().toString());
